@@ -17,14 +17,14 @@ Việc triển khai mô hình trên các thiết bị có tài nguyên phần c�
 
 ColabNAS là một phương pháp thuộc nhóm NAS, tìm kiếm kiến trúc mạng bằng thuật toán không dùng đến đạo hàm, theo nguyên lí "Dao cạo Occam" để giữ cho mô hình đơn giản. Nhờ đó, toàn bộ quá trình huấn luyện có thể được thực hiện trên các tài nguyên GPU miễn phí trên GoogleColab, Kaggle,... Do đó phương pháp này được đặt tên là ColabNAS.
 
-Ngoài tái hiện lại các thí nghiệm được công bố trong bài báo gốc, khóa luận cũng thực hiện thêm một vài đề xuất cải tiến đơn giản để khắc phục những vấn đề về tính "ngẫu nhiên" trong cài đặt gốc của ColabNAS.
+Ngoài tái hiện lại các thí nghiệm được công bố trong bài báo gốc, khóa luận cũng thực hiện thêm một vài đề xuất cải tiến đơn giản để khắc phục những vấn đề về tính "ngẫu nhiên" trong cài đặt gốc của ColabNAS: đưa augmentation ra khỏi vòng lặp tìm kiếm và chỉ áp dụng cho kiến trúc thắng cuộc, cho phép huấn luyện lại một cấu hình khi độ chính xác sụt giảm vì nhiễu, và cơ chế cố định seed để tăng khả năng tái lập kết quả.
 
 ## ⚠️ Nguồn gốc & mức độ kế thừa từ bài báo gốc
 
 Source code này được xây dựng **dựa trên** ColabNAS (Garavagno et al., 2024) — phần lõi thuật toán
-(`class ColabNAS`, hàm `search`, `explore_num_cells`) là tái hiện/kế thừa trực tiếp từ [repo gốc](https://github.com/AndreaMattiaGaravagno/ColabNAS). Phần lớn khối lượng "code mới" trong khóa luận là hiện thực lại các thí nghiệm mà bài báo có mô tả bằng lời/bảng số liệu nhưng notebook gốc chưa từng viết code (xem chi tiết đối chiếu từng dòng trong **[MODIFIED.md](MODIFIED.md)**).
+(`class ColabNAS`, hàm `search`, `explore_num_cells`) là tái hiện/kế thừa trực tiếp từ [repo gốc](https://github.com/AndreaMattiaGaravagno/ColabNAS). Phần lớn khối lượng "code mới" trong khóa luận là hiện thực lại các thí nghiệm mà bài báo có mô tả bằng lời/bảng số liệu nhưng notebook gốc chưa từng viết code: mô tả 5 bộ dữ liệu, thí nghiệm hardware-aware trên 3 mục tiêu phần cứng, so sánh với Transfer Learning, và so sánh với SOTA trên VWW.
 
-👉 **Đọc [MODIFIED.md](MODIFIED.md) trước khi đánh giá phần "đóng góp mới"** — file này tách rõ đâu là phần mã hoá lại ý tưởng có sẵn của bài báo, đâu là 2 ý tưởng thực sự mới của nhóm (hiện đang để dạng code comment, chưa bật mặc định — xem mục "Giới hạn hiện tại" bên dưới).
+👉 Phần **thực sự là đóng góp mới** của nhóm — không có trong bài báo lẫn notebook gốc — được trình bày ở mục [Các cải tiến của khóa luận](#các-cải-tiến-của-khóa-luận) bên dưới.
 
 ### Giấy phép & trích dẫn
 
@@ -46,26 +46,63 @@ Nếu sử dụng lại ý tưởng/thuật toán trong repo này, vui lòng tr�
 }
 ```
 
+## Các cải tiến của khóa luận
+
+Ba điểm dưới đây không xuất hiện trong bài báo lẫn notebook gốc.
+
+### 1. Augmentation chỉ áp dụng cho kiến trúc thắng cuộc (two-stage)
+
+Trong cài đặt gốc, hai lớp `RandomFlip` và `RandomRotation` nằm ngay trong pipeline tiền xử lý của mọi
+mô hình, nên tất cả kiến trúc thử trong quá trình search đều được huấn luyện kèm augmentation.
+
+Khóa luận đưa augmentation ra khỏi kiến trúc mô hình, chuyển thành một tập dữ liệu riêng
+(`train_ds_aug`), và chỉ dùng nó cho **kiến trúc tốt nhất tìm được** sau khi search kết thúc: nạp lại
+trọng số của kiến trúc đó, huấn luyện thêm một lượt trên dữ liệu augmentation, rồi **chỉ giữ mô hình
+augmentation nếu val_accuracy của nó cao hơn mô hình gốc**. Cả hai mô hình đều được lưu
+(`base_architecture_*.tflite` và `resulting_architecture_*.tflite`) và đều được đánh giá trên tập test.
+Nhờ vậy quá trình search không phải chịu thêm nhiễu và chi phí của augmentation ở từng bước, trong khi
+tác dụng của augmentation vẫn được kiểm chứng trên đúng kiến trúc cuối cùng.
+
+Công tắc: `hw_two_stage` (Thí nghiệm 1, đang bật), `sota_two_stage` (Thí nghiệm 3, đang tắt).
+
+### 2. Huấn luyện lại khi độ chính xác sụt giảm (`max_atempt`)
+
+Thuật toán gốc dừng tăng số cell ngay khi val_accuracy không cải thiện so với bước trước — một lần
+huấn luyện kém may mắn là đủ để kết thúc quá trình khám phá. Khóa luận cho phép huấn luyện lại **đúng
+cấu hình `(k, c)` vừa bị giảm** tối đa `max_atempt` lần cho mỗi giá trị `k`, khi mức sụt giảm đạt
+ngưỡng `1e-3` và kiến trúc vẫn thỏa ràng buộc phần cứng; nếu lần huấn luyện lại cho kết quả tốt hơn thì
+vòng lặp tiếp tục tăng số cell như bình thường.
+
+Công tắc: `search(max_atempt=...)` — mặc định 1 lần, dùng cho Thí nghiệm 1; Thí nghiệm 2 và 3 dùng
+`max_atempt=0`, tức chạy đúng như bản gốc.
+
+### 3. Cơ chế cố định seed / determinism
+
+`FIXED_SEED` cùng các dòng đánh dấu `# [Fix Randomness]` (`set_random_seed`, `enable_op_determinism`,
+`GlorotUniform(seed=...)`, reset seed ở đầu mỗi vòng lặp NAS) nhằm tăng khả năng tái lập kết quả — bài
+báo gốc chỉ cố định seed cho bước chia tập train/validation. Cơ chế này **hiện để dạng code comment,
+chưa bật mặc định**.
+
 ## Cấu trúc repository
 
 | File | Mô tả |
 |---|---|
 | `T826_KL_KHMT24_SourceCode.ipynb` | Notebook chính của khóa luận — toàn bộ code thí nghiệm |
 | `ORGINAL_ColabNAS.ipynb` | Notebook gốc đi kèm bài báo |
-| `MODIFIED.md` | Đối chiếu chi tiết giữa notebook khóa luận và bài báo/notebook gốc |
+| `MODIFIED.md` | Bản đối chiếu chi tiết dùng nội bộ giữa notebook khóa luận và bài báo/notebook gốc |
 | `requirements.txt` | Các thư viện Python cốt lõi cần cho notebook |
 | `LICENSE` | MIT License — giữ nguyên copyright của tác giả gốc, cộng thêm copyright của nhóm cho phần code mới |
 | `README.md` | File này |
 
 ## Bộ dữ liệu sử dụng
 
-| Dataset | Bài toán | Nguồn / Trích dẫn |
-|---|---|---|
-| Melanoma Skin Cancer | Phân loại benign/malignant | https://www.kaggle.com/datasets/hasnainjaved/melanoma-skin-cancer-dataset-of-10000-images |
-| Flowers-4 | Phân loại 4 loại hoa (tập con Flowers) | Bộ gốc ([l3llff/flowers](https://www.kaggle.com/datasets/l3llff/flowers)) hiện đã bị gỡ khỏi Kaggle. Khóa luận dùng bản sao do tác giả A. M. Garavagno tải về trước đó, lưu trữ tại [Google Drive](https://drive.google.com/file/d/18NHZUFfDyPzjsTTcTXFEtZQNC5Fesnxl/view?usp=drive_link) |
-| Animals-3 | Phân loại 3 loài động vật (tập con Animals-10) | https://www.kaggle.com/datasets/alessiocorrado99/animals10 |
-| MNIST | Phân loại chữ số viết tay | LeCun, Y., Cortes, C., and Burges, C. J. *MNIST handwritten digit database*. AT&T Labs, 2010. http://yann.lecun.com/exdb/mnist (cũng có trên Kaggle: [hojjatk/mnist-dataset](https://www.kaggle.com/datasets/hojjatk/mnist-dataset)) |
-| Visual Wake Words (VWW) | Phát hiện có/không có người trong ảnh | Chowdhery, A., Warden, P., Shlens, J., Howard, A., and Rhodes, R. *Visual Wake Words Dataset*, 2019. arXiv: [1906.05721](https://arxiv.org/abs/1906.05721) [cs.CV] |
+| Dataset | Bài toán | Số ảnh (train / test) | Nguồn / Trích dẫn |
+|---|---|---|---|
+| Melanoma Skin Cancer | Phân loại benign/malignant | 9.605 / 1.000 — ảnh RGB 300×300 | https://www.kaggle.com/datasets/hasnainjaved/melanoma-skin-cancer-dataset-of-10000-images |
+| Flowers-4 | Phân loại 4 loại hoa (tập con Flowers) | 3.360 / 842 — ảnh RGB 256×256; dandelion 1.052, iris 1.054, magnolia 1.048, tulip 1.048 | Bộ gốc ([l3llff/flowers](https://www.kaggle.com/datasets/l3llff/flowers)) hiện đã bị gỡ khỏi Kaggle. Khóa luận dùng bản sao do tác giả A. M. Garavagno tải về trước đó, lưu trữ tại [Google Drive](https://drive.google.com/file/d/18NHZUFfDyPzjsTTcTXFEtZQNC5Fesnxl/view?usp=drive_link) |
+| Animals-3 | Phân loại 3 loài động vật (tập con Animals-10) | 6.265 / 1.568 — ảnh RGB kích thước đa dạng; tập train gồm bướm 1.689, gà 2.478, ngựa 2.098 | https://www.kaggle.com/datasets/alessiocorrado99/animals10 |
+| MNIST | Phân loại chữ số viết tay | 60.000 / 10.000 — ảnh xám 28×28, 10 lớp phân bố đều | LeCun, Y., Cortes, C., and Burges, C. J. *MNIST handwritten digit database*. AT&T Labs, 2010. http://yann.lecun.com/exdb/mnist (cũng có trên Kaggle: [hojjatk/mnist-dataset](https://www.kaggle.com/datasets/hojjatk/mnist-dataset)) |
+| Visual Wake Words (VWW) | Phát hiện có/không có người trong ảnh | 115.228 / 8.059 — ảnh RGB kích thước đa dạng | Chowdhery, A., Warden, P., Shlens, J., Howard, A., and Rhodes, R. *Visual Wake Words Dataset*, 2019. arXiv: [1906.05721](https://arxiv.org/abs/1906.05721) [cs.CV] |
 
 *Lưu ý: trong `data_dirs` của notebook, một số dataset trên được mount từ bản re-upload trên tài khoản Kaggle cá nhân của nhóm (`karosvn`, `tommerfrancis`) để đảm bảo notebook chạy ổn định trên Kaggle; nguồn/trích dẫn học thuật chính thức vẫn là các nguồn liệt kê ở trên.*
 
@@ -80,7 +117,8 @@ Các bước chạy:
 1. Import `T826_KL_KHMT24_SourceCode.ipynb` vào Kaggle, attach đủ các Dataset input ở bảng trên.
 2. Bật GPU accelerator T4 x 2 (Kaggle).
 3. Chạy tuần tự từ đầu; phần "Cấp quyền thực thi cho `stm32tflm`" phải chạy trước các thí nghiệm.
-4. (Tuỳ chọn, để build lại `stm32tflm` từ đầu thay vì dùng bản đã biên dịch sẵn): tải [ST X-CUBE-AI](https://www.st.com/en/embedded-software/x-cube-ai.html#get-software), cài vào STM32CubeMX, dùng công cụ export/analyze để lấy binary `stm32tflm` tương ứng target MCU, rồi `chmod +x` trước khi chạy trên Linux/Kaggle.
+4. Ở mỗi thí nghiệm, chọn bộ dữ liệu bằng cách bỏ comment đúng một dòng `data_dir = data_dirs[...]`; các cải tiến được bật/tắt qua `hw_two_stage` và tham số `max_atempt` của `search()` (Thí nghiệm 1), `sota_two_stage` / `sota_max_atempt` (Thí nghiệm 3).
+5. (Tuỳ chọn, để build lại `stm32tflm` từ đầu thay vì dùng bản đã biên dịch sẵn): tải [ST X-CUBE-AI](https://www.st.com/en/embedded-software/x-cube-ai.html#get-software), cài vào STM32CubeMX, dùng công cụ export/analyze để lấy binary `stm32tflm` tương ứng target MCU, rồi `chmod +x` trước khi chạy trên Linux/Kaggle.
 
 
 ## Kết quả thực nghiệm
@@ -205,11 +243,13 @@ trường & cách chạy" ở trên).*
 
 ## Giới hạn / lưu ý hiện tại
 
-Theo `MODIFIED.md`, khóa luận có 2 ý tưởng thực sự vượt ra ngoài bài báo gốc, nhưng **hiện đang để
-dạng code comment, chưa bật mặc định** trong kết quả báo cáo chính thức:
-
-1. Cơ chế fixed-seed/determinism (`FIXED_SEED`, `set_random_seed`, `enable_op_determinism`) để tăng khả năng tái lập kết quả.
-2. Hai biến thể thay thế cho `explore_num_cells` ("thử add thêm cell", và "thử duyệt cell top-down").
+- Cơ chế fixed-seed/determinism (`FIXED_SEED`, `set_random_seed`, `enable_op_determinism`) **hiện vẫn
+  để dạng code comment, chưa bật mặc định**; `FIXED_SEED` mới chỉ được dùng cho bước chia tập
+  train/validation, đúng như bản gốc.
+- Hai cải tiến còn lại (two-stage augmentation và huấn luyện lại `max_atempt` lần) đang bật ở Thí
+  nghiệm 1, nhưng mới được chạy lại trong notebook trên Flowers-4 (Thí nghiệm 1, 2) và VWW (Thí nghiệm
+  3); bảng kết quả bên trên vẫn là số liệu tổng hợp trên sheet (bản merge), chưa cập nhật theo các lần
+  chạy mới này.
 
 ## Tài liệu khóa luận
 
