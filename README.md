@@ -8,7 +8,7 @@ Source code khóa luận tốt nghiệp của nhóm sinh viên trường Đại 
 - **Đề tài:** Mô hình CNN nhẹ cho bài toán phân lớp ảnh với tài nguyên hạn chế
 - **GVHD:** TS. Bùi Duy Đăng — Khoa Công nghệ Thông tin, Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM
 - **Nhóm sinh viên:**
-  - 22127212 - Uông Minh Nguyên Khôi — Chuyên ngành: Khoa học máy tính
+  - 22127212 — Uông Minh Nguyên Khôi — Chuyên ngành: Khoa học máy tính
   - 22127481 — Nguyễn Thanh Nhàn — Chuyên ngành: Công nghệ Thông tin
 
 ## Giới thiệu
@@ -255,7 +255,7 @@ trường & cách chạy" ở trên).*
 
 - Đề cương: [link](https://www.overleaf.com/8858577417rbxwppmqbtgd#45def1)
 - Báo cáo Khóa luận: [link](https://www.overleaf.com/4338641393qqtcgfrzqqkv#39b9f1)
-- Slide: [link](https://docs.google.com/presentation/d/1LagNCOUPE4PFQHaIdiw1dvGXU_CxlFIGoXlx16kO11E/edit?usp=sharing)
+- Slide: [link](https://docs.google.com/presentation/d/13cece1s1QHfEf9oWHEXdLI2EOsT8AZZO99b_DpbJnAQ/edit?usp=sharing)
 - Kế hoạch: [link](https://docs.google.com/spreadsheets/d/15bgjC9sBM9WLEpcgA84cZjkK1MEHjC0VrEY7j161dAY/edit?usp=sharing)
 - Sheet tổng hợp các paper đã khảo sát: [link](https://docs.google.com/spreadsheets/d/1zpYtDSbJdRINkpCxvo2PxE1RPMMh6ihKPEV9uD7P3Zk/edit?gid=0#gid=0)
 
